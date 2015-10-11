@@ -1,4 +1,4 @@
-defmodule Postgrex.Types do
+defmodule Postgrex.Types.Redshift do
   @moduledoc """
   Encodes and decodes between Postgres' protocol and Elixir values.
   """
@@ -31,6 +31,11 @@ defmodule Postgrex.Types do
       join_range = ""
     end
 
+    # This is hacked to work with Redshift - Redshift doesn't support array constructor syntax, so use lists instead.
+    # Casting to TEXT isn't supported in Redshift - look up typsend regproc by OID instead
+    # The other previous 'where' filters may still be needed - I just didn't understand enough about either
+    # Redshift or Postgres to make them work
+
     """
     SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,
            t.typelem, #{rngsubtype}, ARRAY (
@@ -40,13 +45,10 @@ defmodule Postgrex.Types do
       ORDER BY a.attnum
     )
     FROM pg_type AS t
+    JOIN pg_proc ON pg_proc.oid = t.typsend
     #{join_range}
     WHERE
-      t.typname::text = ANY ((#{sql_array(m.type)})::text[]) OR
-      t.typsend::text = ANY ((#{sql_array(m.send)})::text[]) OR
-      t.typreceive::text = ANY ((#{sql_array(m.receive)})::text[]) OR
-      t.typoutput::text = ANY ((#{sql_array(m.output)})::text[]) OR
-      t.typinput::text = ANY ((#{sql_array(m.input)})::text[])
+      pg_proc.proname in #{sql_list(m.send)}
     """
   end
 
@@ -190,6 +192,10 @@ defmodule Postgrex.Types do
     []
   end
 
+  defp parse_oids(nil) do
+    []
+  end
+
   defp parse_oids("{" <> rest) do
     parse_oids(rest, [])
   end
@@ -204,6 +210,11 @@ defmodule Postgrex.Types do
   defp sql_array(list) do
     list = Enum.uniq(list)
     "ARRAY[" <> Enum.map_join(list, ", ", &("'" <> &1 <> "'")) <> "]"
+  end
+
+  defp sql_list(list) do
+    list = Enum.uniq(list)
+    "(" <> Enum.map_join(list, ", ", &("'" <> &1 <> "'")) <> ")"
   end
 
   ### TYPE FORMAT ###
