@@ -1,10 +1,10 @@
-defmodule QueryTest do
+defmodule RedshiftQueryTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
   alias Postgrex.Connection, as: P
 
   setup do
-    opts = [ database: "postgrex_test", types_module: Postgrex.Types.Redshift ]
+    opts = [ database: "postgrex_test", bootstrap_module: Postgrex.Bootstrap.Redshift ]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid]}
   end
@@ -325,10 +325,10 @@ defmodule QueryTest do
   end
 
   test "insert", context do
-    :ok = query("CREATE TABLE test (id int, text text)", [])
-    [] = query("SELECT * FROM test", [])
-    :ok = query("INSERT INTO test VALUES ($1, $2)", [42, "fortytwo"], [])
-    [[42, "fortytwo"]] = query("SELECT * FROM test", [])
+    :ok = query("CREATE TABLE redshift_test (id int, text text)", [])
+    [] = query("SELECT * FROM redshift_test", [])
+    :ok = query("INSERT INTO redshift_test VALUES ($1, $2)", [42, "fortytwo"], [])
+    [[42, "fortytwo"]] = query("SELECT * FROM redshift_test", [])
   end
 
   test "error codes are translated", context  do

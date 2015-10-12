@@ -235,7 +235,6 @@ defmodule Postgrex.Protocol do
   ## auth
 
   defp auth_recv(%{sock: sock, timeout: timeout} = s, opts, buffer) do
-    IO.inspect opts
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_auth(type: :ok), buffer} ->
         init_recv(s, opts, buffer)
@@ -311,12 +310,11 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_send(s, ref, opts, buffer) do
-    types_mod = Dict.get(opts, :types_module, Types)
-    #IO.inspect s
+    types_mod = Dict.get(opts, :bootstrap_module, Types)
     %{parameters: parameters, extensions: extensions, sock: sock} = s
     extension_keys = Enum.map(extensions, &elem(&1, 0))
-    extension_opts = types_mod.prepare_extensions(extensions, parameters)
-    matchers = types_mod.extension_matchers(extension_keys, extension_opts)
+    extension_opts = Types.prepare_extensions(extensions, parameters)
+    matchers = Types.extension_matchers(extension_keys, extension_opts)
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
     query = types_mod.bootstrap_query(matchers, version)
     msg = msg_query(query: query)
