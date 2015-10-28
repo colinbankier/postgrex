@@ -237,7 +237,7 @@ defmodule Postgrex.Protocol do
   defp auth_recv(%{sock: sock, timeout: timeout} = s, opts, buffer) do
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_auth(type: :ok), buffer} ->
-        init_recv(s, buffer)
+        init_recv(s, opts, buffer)
       {:ok, msg_auth(type: :cleartext), buffer} ->
         auth_cleartext(s, opts, buffer)
       {:ok, msg_auth(type: :md5, data: salt), buffer} ->
@@ -276,17 +276,17 @@ defmodule Postgrex.Protocol do
 
   ## init
 
-  defp init_recv(%{sock: sock, timeout: timeout} = s, buffer) do
+  defp init_recv(%{sock: sock, timeout: timeout} = s, opts, buffer) do
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_backend_key(pid: pid, key: key), buffer} ->
-        init_recv(%{s | backend_key: {pid, key}}, buffer)
+        init_recv(%{s | backend_key: {pid, key}}, opts, buffer)
       {:ok, msg_ready(), buffer} ->
-        bootstrap(s, buffer)
+        bootstrap(s, opts, buffer)
       {:ok, msg_error(fields: fields), _} ->
         error(Postgrex.Error.exception(postgres: fields), s)
       {:ok, msg, buffer} ->
         {:ok, s} = message(:init, msg, s)
-        init_recv(s, buffer)
+        init_recv(s, opts, buffer)
       {:error, reason} ->
         error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
     end
@@ -294,12 +294,12 @@ defmodule Postgrex.Protocol do
 
   ## bootstrap
 
-  defp bootstrap(%{types_key: types_key} = s, buffer) do
+  defp bootstrap(%{types_key: types_key} = s, opts, buffer) do
     case Postgrex.TypeServer.fetch(types_key) do
       {:ok, table} ->
         bootstrap_ready(%{s | types: table}, buffer)
       {:lock, ref, table} ->
-        bootstrap_send(%{s | types: table}, ref, buffer)
+        bootstrap_send(%{s | types: table}, ref, opts, buffer)
     end
   end
 
@@ -309,13 +309,14 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | state: :ready}}
   end
 
-  defp bootstrap_send(s, ref, buffer) do
+  defp bootstrap_send(s, ref, opts, buffer) do
+    types_mod = Dict.get(opts, :bootstrap_module, Types)
     %{parameters: parameters, extensions: extensions, sock: sock} = s
     extension_keys = Enum.map(extensions, &elem(&1, 0))
     extension_opts = Types.prepare_extensions(extensions, parameters)
     matchers = Types.extension_matchers(extension_keys, extension_opts)
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
-    query = Types.bootstrap_query(matchers, version)
+    query = types_mod.bootstrap_query(matchers, version)
     msg = msg_query(query: query)
     case msg_send(msg, sock) do
       :ok ->
